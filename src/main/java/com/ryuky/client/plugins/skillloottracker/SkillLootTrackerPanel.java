@@ -285,6 +285,15 @@ public class SkillLootTrackerPanel extends PluginPanel
 				itemId, 0, "0", "0", "", 0L, 0L));
 	}
 
+	public void setCategoryEventCount(String category, long count)
+	{
+		LootBox box = boxes.get(category);
+		if (box != null)
+		{
+			SwingUtilities.invokeLater(() -> box.setEventCount(count));
+		}
+	}
+
 	public void resetAll()
 	{
 		SwingUtilities.invokeLater(() -> {
@@ -384,6 +393,7 @@ public class SkillLootTrackerPanel extends PluginPanel
 	private class LootBox extends JPanel
 	{
 		private final SkillLootTrackerPlugin plugin;
+		private final JLabel titleLabel = new JLabel();
 		private final JPanel itemGrid = new JPanel(new GridLayout(0, 4, 6, 6));
 		private final JPanel subtotalPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 		private final Map<Integer, JPanel> itemBoxes = new HashMap<>();
@@ -408,7 +418,7 @@ public class SkillLootTrackerPanel extends PluginPanel
 			topPart.setOpaque(false);
 			GridBagConstraints c = new GridBagConstraints();
 
-			JLabel titleLabel = new JLabel(title);
+			setEventCount(0);
 			titleLabel.setFont(FontManager.getRunescapeSmallFont().deriveFont(10f));
 			titleLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 
@@ -445,6 +455,11 @@ public class SkillLootTrackerPanel extends PluginPanel
 
 			setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 			setAlignmentX(Component.LEFT_ALIGNMENT);
+		}
+
+		void setEventCount(long count)
+		{
+			titleLabel.setText(category + " × " + QuantityFormatter.formatNumber(count));
 		}
 
 		private Color getCategoryColor(String cat)

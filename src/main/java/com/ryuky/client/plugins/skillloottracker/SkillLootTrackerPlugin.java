@@ -67,6 +67,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class SkillLootTrackerPlugin extends Plugin
 {
 	private static final String DATA_KEY = "lootData";
+	private static final String EVENT_COUNTS_KEY = "lootEventCounts";
 	private static final String ACCUMULATED_TIME_KEY = "accumulatedTimeMs";
 
 	// -----------------------------------------------------------------------
@@ -778,6 +779,7 @@ public class SkillLootTrackerPlugin extends Plugin
 	private NavigationButton navButton;
 
 	private final Map<String, Map<Integer, Integer>> lootPerSkill = new ConcurrentHashMap<>();
+	private final Map<String, Map<Integer, Long>> eventCountsPerSkill = new ConcurrentHashMap<>();
 	private final Map<Integer, Integer> lastInventory = new ConcurrentHashMap<>();
 
 	private final AtomicBoolean resetInProgress = new AtomicBoolean(false);
@@ -848,6 +850,7 @@ public class SkillLootTrackerPlugin extends Plugin
 		if (panel != null) panel.shutdown();
 		scheduler.shutdownNow();
 		lootPerSkill.clear();
+		eventCountsPerSkill.clear();
 		lastInventory.clear();
 		customIgnoreIds.clear();
 		dataLoaded.set(false);
@@ -970,6 +973,8 @@ public class SkillLootTrackerPlugin extends Plugin
 		{
 			if (catEntry.getValue().remove(itemId) != null)
 			{
+				Map<Integer, Long> counts = eventCountsPerSkill.get(catEntry.getKey());
+				if (counts != null) counts.remove(itemId);
 				anyRemoved = true;
 			}
 		}
@@ -980,6 +985,7 @@ public class SkillLootTrackerPlugin extends Plugin
 				for (String category : lootPerSkill.keySet())
 				{
 					panel.removeItem(itemId, category);
+					panel.setCategoryEventCount(category, getCategoryEventCount(category));
 				}
 				updatePanelTotals();
 			});
@@ -1025,6 +1031,8 @@ public class SkillLootTrackerPlugin extends Plugin
 		{
 			if (catEntry.getValue().remove(itemId) != null)
 			{
+				Map<Integer, Long> counts = eventCountsPerSkill.get(catEntry.getKey());
+				if (counts != null) counts.remove(itemId);
 				anyRemoved = true;
 			}
 		}
@@ -1036,6 +1044,7 @@ public class SkillLootTrackerPlugin extends Plugin
 			{
 				String category = catEntry.getKey();
 				panel.removeItem(itemId, category);
+				panel.setCategoryEventCount(category, getCategoryEventCount(category));
 			}
 			updatePanelTotals();
 			saveData();
@@ -1132,6 +1141,16 @@ public class SkillLootTrackerPlugin extends Plugin
 					loaded.forEach((k, v) -> lootPerSkill.put(k, new ConcurrentHashMap<>(v)));
 				}
 			}
+			String countsJson = configManager.getConfiguration("skillloottracker", EVENT_COUNTS_KEY);
+			if (countsJson != null && !countsJson.isBlank())
+			{
+				Type countsType = new TypeToken<Map<String, Map<Integer, Long>>>() {}.getType();
+				Map<String, Map<Integer, Long>> loadedCounts = gson.fromJson(countsJson, countsType);
+				if (loadedCounts != null)
+				{
+					loadedCounts.forEach((k, v) -> eventCountsPerSkill.put(k, new ConcurrentHashMap<>(v)));
+				}
+			}
 
 			Long savedMs = configManager.getConfiguration("skillloottracker", ACCUMULATED_TIME_KEY, Long.class);
 			accumulatedTime = savedMs != null ? Duration.ofMillis(savedMs) : Duration.ZERO;
@@ -1158,6 +1177,7 @@ public class SkillLootTrackerPlugin extends Plugin
 							haPrice
 					);
 				}
+				panel.setCategoryEventCount(category, getCategoryEventCount(category));
 			}
 			updatePanelTotals();
 
@@ -1179,6 +1199,7 @@ public class SkillLootTrackerPlugin extends Plugin
 		{
 			String json = gson.toJson(lootPerSkill);
 			configManager.setConfiguration("skillloottracker", DATA_KEY, json);
+			configManager.setConfiguration("skillloottracker", EVENT_COUNTS_KEY, gson.toJson(eventCountsPerSkill));
 			configManager.setConfiguration("skillloottracker", ACCUMULATED_TIME_KEY,
 					getCurrentSessionDuration().toMillis());
 		}
@@ -1308,6 +1329,8 @@ public class SkillLootTrackerPlugin extends Plugin
 	{
 		Map<Integer, Integer> categoryLoot = lootPerSkill.computeIfAbsent(category, k -> new ConcurrentHashMap<>());
 		int newTotal = categoryLoot.merge(itemId, qty, Integer::sum);
+		eventCountsPerSkill.computeIfAbsent(category, k -> new ConcurrentHashMap<>())
+				.merge(itemId, 1L, Long::sum);
 
 		clientThread.invoke(() -> {
 			ItemComposition comp = itemManager.getItemComposition(itemId);
@@ -1325,6 +1348,7 @@ public class SkillLootTrackerPlugin extends Plugin
 					gePrice,
 					haPrice
 			);
+			panel.setCategoryEventCount(category, getCategoryEventCount(category));
 
 			updatePanelTotals();
 		});
@@ -1335,6 +1359,12 @@ public class SkillLootTrackerPlugin extends Plugin
 		{
 			saveData();
 		}
+	}
+
+	private long getCategoryEventCount(String category)
+	{
+		Map<Integer, Long> counts = eventCountsPerSkill.get(category);
+		return counts == null ? 0L : counts.values().stream().mapToLong(Long::longValue).sum();
 	}
 
 	private void updatePanelTotals()
@@ -1416,12 +1446,14 @@ public class SkillLootTrackerPlugin extends Plugin
 	{
 		resetInProgress.set(true);
 		lootPerSkill.clear();
+		eventCountsPerSkill.clear();
 		lastInventory.clear();
 		accumulatedTime = Duration.ZERO;
 		sessionStart = Instant.now();
 		cachedTotalGe = 0L;
 		cachedTotalHa = 0L;
 		panel.resetAll();
+		saveData();
 
 		clientThread.invoke(() -> {
 			try
@@ -1451,6 +1483,8 @@ public class SkillLootTrackerPlugin extends Plugin
 	{
 		resetInProgress.set(true);
 		lootPerSkill.remove(category);
+		eventCountsPerSkill.remove(category);
+		saveData();
 		// Remove the UI box without re-firing the callback
 		panel.removeCategoryBox(category);
 		clientThread.invoke(() -> {
