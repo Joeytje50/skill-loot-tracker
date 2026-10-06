@@ -467,6 +467,7 @@ public class SkillLootTrackerPanel extends PluginPanel
 			switch (cat)
 			{
 				case "Fishing": return new Color(52, 152, 219);
+				case "Deep Sea Trawling": return new Color(39, 166, 176);
 				case "Mining": return new Color(149, 165, 166);
 				case "Woodcutting": return new Color(39, 174, 96);
 				case "Farming": return new Color(241, 196, 15);
@@ -481,6 +482,7 @@ public class SkillLootTrackerPanel extends PluginPanel
 			switch (cat)
 			{
 				case "Fishing": spriteId = SpriteID.SKILL_FISHING; break;
+				case "Deep Sea Trawling": spriteId = SpriteID.SKILL_FISHING; break;
 				case "Mining": spriteId = SpriteID.SKILL_MINING; break;
 				case "Woodcutting": spriteId = SpriteID.SKILL_WOODCUTTING; break;
 				case "Farming": spriteId = SpriteID.SKILL_FARMING; break;

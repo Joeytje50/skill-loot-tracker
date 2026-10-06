@@ -79,13 +79,21 @@ public interface SkillLootTrackerConfig extends Config
 	)
 	default boolean trackHunter() { return true; }
 
+	@ConfigItem(
+			keyName = "trackDeepSeaTrawling",
+			name = "Track Deep Sea Trawling",
+			description = "Track fish and angler's paint caught while deep sea trawling",
+			position = 6
+	)
+	default boolean trackDeepSeaTrawling() { return true; }
+
 	// -----------------------------------------------------------------------
 	// Ignore List
 	// -----------------------------------------------------------------------
 	@ConfigSection(
 			name = "Ignore List",
 			description = "Items to never track (comma-separated item IDs)",
-			position = 6,
+			position = 7,
 			closedByDefault = true
 	)
 	String ignoreSection = "ignoreSection";
@@ -123,7 +131,7 @@ public interface SkillLootTrackerConfig extends Config
 	@ConfigSection(
 			name = "Session Timer",
 			description = "Control the session timer",
-			position = 7
+			position = 8
 	)
 	String timerSection = "timerSection";
 

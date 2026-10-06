@@ -23,6 +23,7 @@
  */
 package com.ryuky.client.plugins.skillloottracker;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -31,6 +32,7 @@ import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.AnimationChanged;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
@@ -46,6 +48,7 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.QuantityFormatter;
+import net.runelite.client.util.Text;
 
 import javax.inject.Inject;
 import java.lang.reflect.Type;
@@ -57,18 +60,48 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @PluginDescriptor(
 		name = "Skilling Loot Tracker",
 		description = "Tracks loot gained from skilling activities",
-		tags = {"skill", "loot", "tracker", "fishing", "mining", "woodcutting", "farming", "hunter"}
+		tags = {"skill", "loot", "tracker", "fishing", "trawling", "mining", "woodcutting", "farming", "hunter"}
 )
 public class SkillLootTrackerPlugin extends Plugin
 {
 	private static final String DATA_KEY = "lootData";
 	private static final String EVENT_COUNTS_KEY = "lootEventCounts";
 	private static final String ACCUMULATED_TIME_KEY = "accumulatedTimeMs";
+	private static final String TRAWLING_CATEGORY = "Deep Sea Trawling";
+	private static final int ANGLERS_PAINT_ID = 32096;
+	private static final Pattern TRAWLING_CATCH = Pattern.compile(
+			"^(?:You|(?:Jobless|Jittery|Jolly) Jim|Ex-Captain Siad|Adventurer Ada|Cabin Boy Jenkins|"
+					+ "Oarswoman Olga|Bosun Zarah|Spotter Virginia|Sailor Jakob) catch(?:es)? (\\w+) "
+					+ "(giant krill|haddock|yellowfin|halibut|bluefin|marlin|giant blue krill|"
+					+ "golden haddock|orangefin|huge halibut|purplefin|swift marlin)!$",
+			Pattern.CASE_INSENSITIVE);
+	private static final Map<String, Integer> TRAWLING_FISH_IDS = ImmutableMap.<String, Integer>builder()
+			.put("giant krill", 32309)
+			.put("haddock", 32317)
+			.put("yellowfin", 32325)
+			.put("halibut", 32333)
+			.put("bluefin", 32341)
+			.put("marlin", 32349)
+			.put("giant blue krill", 31408)
+			.put("golden haddock", 31412)
+			.put("orangefin", 31416)
+			.put("huge halibut", 31420)
+			.put("purplefin", 31424)
+			.put("swift marlin", 31428)
+			.build();
+	private static final Map<String, Integer> CATCH_AMOUNTS = ImmutableMap.<String, Integer>builder()
+			.put("a", 1).put("an", 1).put("one", 1).put("two", 2)
+			.put("three", 3).put("four", 4).put("five", 5).put("six", 6)
+			.put("seven", 7).put("eight", 8).put("nine", 9).put("ten", 10)
+			.put("eleven", 11).put("twelve", 12)
+			.build();
 
 	// -----------------------------------------------------------------------
 	// Always-ignored item IDs (junk / non-loot that should never be tracked)
@@ -1299,6 +1332,30 @@ public class SkillLootTrackerPlugin extends Plugin
 
 		lastInventory.clear();
 		lastInventory.putAll(currentInventory);
+	}
+
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (!dataLoaded.get() || !config.trackDeepSeaTrawling()
+				|| (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)) return;
+
+		String message = Text.removeTags(event.getMessage()).trim();
+		if ("You've received some paint!".equals(message))
+		{
+			if (!isIgnored(ANGLERS_PAINT_ID)) trackLoot(TRAWLING_CATEGORY, ANGLERS_PAINT_ID, 1);
+			return;
+		}
+
+		Matcher catchMessage = TRAWLING_CATCH.matcher(message);
+		if (!catchMessage.matches()) return;
+
+		Integer amount = CATCH_AMOUNTS.get(catchMessage.group(1).toLowerCase(Locale.ROOT));
+		Integer itemId = TRAWLING_FISH_IDS.get(catchMessage.group(2).toLowerCase(Locale.ROOT));
+		if (amount != null && itemId != null && !isIgnored(itemId))
+		{
+			trackLoot(TRAWLING_CATEGORY, itemId, amount);
+		}
 	}
 
 	/**
