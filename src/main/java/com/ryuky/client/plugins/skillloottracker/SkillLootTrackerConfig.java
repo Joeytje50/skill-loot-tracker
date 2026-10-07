@@ -80,12 +80,12 @@ public interface SkillLootTrackerConfig extends Config
 	default boolean trackHunter() { return true; }
 
 	@ConfigItem(
-			keyName = "trackDeepSeaTrawling",
+			keyName = "trackTrawling",
 			name = "Track Deep Sea Trawling",
-			description = "Track fish and angler's paint caught while deep sea trawling",
+			description = "Track items gained from Deep Sea Trawling",
 			position = 6
 	)
-	default boolean trackDeepSeaTrawling() { return true; }
+	default boolean trackTrawling() { return true; }
 
 	// -----------------------------------------------------------------------
 	// Ignore List

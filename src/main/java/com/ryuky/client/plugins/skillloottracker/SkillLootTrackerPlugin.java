@@ -74,8 +74,6 @@ public class SkillLootTrackerPlugin extends Plugin
 	private static final String DATA_KEY = "lootData";
 	private static final String EVENT_COUNTS_KEY = "lootEventCounts";
 	private static final String ACCUMULATED_TIME_KEY = "accumulatedTimeMs";
-	private static final String TRAWLING_CATEGORY = "Deep Sea Trawling";
-	private static final int ANGLERS_PAINT_ID = 32096;
 	private static final Pattern TRAWLING_CATCH = Pattern.compile(
 			"^(?:You|(?:Jobless|Jittery|Jolly) Jim|Ex-Captain Siad|Adventurer Ada|Cabin Boy Jenkins|"
 					+ "Oarswoman Olga|Bosun Zarah|Spotter Virginia|Sailor Jakob) catch(?:es)? (\\w+) "
@@ -593,6 +591,11 @@ public class SkillLootTrackerPlugin extends Plugin
 			.build();
 
 	// -----------------------------------------------------------------------
+	// Deep sea trawling
+	// -----------------------------------------------------------------------
+	private static final Set<Integer> TRAWLING_IDS = ImmutableSet.of(32096);
+
+	// -----------------------------------------------------------------------
 	// Animation sets
 	// -----------------------------------------------------------------------
 	private static final Set<Integer> WOODCUTTING_ANIMATIONS = ImmutableSet.<Integer>builder()
@@ -795,6 +798,10 @@ public class SkillLootTrackerPlugin extends Plugin
 			.add(2000)   // chinchompa throwing / collecting anim
 			// Butterfly net
 			.add(6760)
+			.build();
+
+	private static final Set<Integer> TRAWLING_ANIMATIONS = ImmutableSet.<Integer>builder()
+			.add(13474) // Operating a trawling net
 			.build();
 
 	@Inject private Client client;
@@ -1272,6 +1279,11 @@ public class SkillLootTrackerPlugin extends Plugin
 			lastSkillAction = "Mining";
 			lastSkillActionTime = System.currentTimeMillis();
 		}
+		else if (TRAWLING_ANIMATIONS.contains(anim))
+		{
+			lastSkillAction = "Trawling";
+			lastSkillActionTime = System.currentTimeMillis();
+		}
 		else if (FISHING_ANIMATIONS.contains(anim))
 		{
 			lastSkillAction = "Fishing";
@@ -1337,16 +1349,10 @@ public class SkillLootTrackerPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		if (!dataLoaded.get() || !config.trackDeepSeaTrawling()
+		if (!dataLoaded.get() || !config.trackTrawling()
 				|| (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)) return;
 
 		String message = Text.removeTags(event.getMessage()).trim();
-		if ("You've received some paint!".equals(message))
-		{
-			if (!isIgnored(ANGLERS_PAINT_ID)) trackLoot(TRAWLING_CATEGORY, ANGLERS_PAINT_ID, 1);
-			return;
-		}
-
 		Matcher catchMessage = TRAWLING_CATCH.matcher(message);
 		if (!catchMessage.matches()) return;
 
@@ -1354,7 +1360,7 @@ public class SkillLootTrackerPlugin extends Plugin
 		Integer itemId = TRAWLING_FISH_IDS.get(catchMessage.group(2).toLowerCase(Locale.ROOT));
 		if (amount != null && itemId != null && !isIgnored(itemId))
 		{
-			trackLoot(TRAWLING_CATEGORY, itemId, amount);
+			trackLoot("Trawling", itemId, amount);
 		}
 	}
 
@@ -1378,6 +1384,7 @@ public class SkillLootTrackerPlugin extends Plugin
 			case "Woodcutting": return elapsed < SKILL_WINDOW_MS         && "Woodcutting".equals(lastSkillAction) && config.trackWoodcutting();
 			case "Farming":     return elapsed < FARMING_SKILL_WINDOW_MS && "Farming".equals(lastSkillAction)     && config.trackFarming();
 			case "Hunter":      return elapsed < SKILL_WINDOW_MS         && "Hunter".equals(lastSkillAction)      && config.trackHunter();
+			case "Trawling":    return elapsed < SKILL_WINDOW_MS         && "Trawling".equals(lastSkillAction)    && config.trackTrawling();
 			default: return false;
 		}
 	}
@@ -1459,24 +1466,26 @@ public class SkillLootTrackerPlugin extends Plugin
 
 	private String getCategory(int itemId)
 	{
-		boolean wc   = LOG_IDS.contains(itemId);
-		boolean fish = FISH_IDS.contains(itemId);
-		boolean mine = ORE_IDS.contains(itemId);
-		boolean farm = FARMING_IDS.contains(itemId);
-		boolean hunt = HUNTER_IDS.contains(itemId);
+		boolean wc    = LOG_IDS.contains(itemId);
+		boolean fish  = FISH_IDS.contains(itemId);
+		boolean mine  = ORE_IDS.contains(itemId);
+		boolean farm  = FARMING_IDS.contains(itemId);
+		boolean hunt  = HUNTER_IDS.contains(itemId);
+		boolean trawl = TRAWLING_IDS.contains(itemId);
 
-		int matchCount = (wc ? 1 : 0) + (fish ? 1 : 0) + (mine ? 1 : 0) + (farm ? 1 : 0) + (hunt ? 1 : 0);
+		int matchCount = (wc ? 1 : 0) + (fish ? 1 : 0) + (mine ? 1 : 0) + (farm ? 1 : 0) + (hunt ? 1 : 0) + (trawl ? 1 : 0);
 
 		if (matchCount == 0) return null;
 
 		// Single match — no ambiguity, return immediately
 		if (matchCount == 1)
 		{
-			if (wc)   return "Woodcutting";
-			if (fish) return "Fishing";
-			if (mine) return "Mining";
-			if (farm) return "Farming";
-			if (hunt) return "Hunter";
+			if (wc)    return "Woodcutting";
+			if (fish)  return "Fishing";
+			if (mine)  return "Mining";
+			if (farm)  return "Farming";
+			if (hunt)  return "Hunter";
+			if (trawl) return "Trawling";
 		}
 
 		// Multiple matches — use lastSkillAction to disambiguate.
@@ -1488,11 +1497,12 @@ public class SkillLootTrackerPlugin extends Plugin
 		{
 			switch (lastSkillAction)
 			{
-				case "Woodcutting": if (wc)   return "Woodcutting"; break;
-				case "Mining":      if (mine) return "Mining";      break;
-				case "Fishing":     if (fish) return "Fishing";     break;
-				case "Farming":     if (farm) return "Farming";     break;
-				case "Hunter":      if (hunt) return "Hunter";      break;
+				case "Woodcutting": if (wc)    return "Woodcutting"; break;
+				case "Mining":      if (mine)  return "Mining";      break;
+				case "Fishing":     if (fish)  return "Fishing";     break;
+				case "Farming":     if (farm)  return "Farming";     break;
+				case "Hunter":      if (hunt)  return "Hunter";      break;
+				case "Trawling":    if (trawl) return "Trawling";    break;
 			}
 		}
 
@@ -1553,11 +1563,12 @@ public class SkillLootTrackerPlugin extends Plugin
 					Set<Integer> categoryIds;
 					switch (category)
 					{
-						case "Woodcutting": categoryIds = LOG_IDS;     break;
-						case "Fishing":     categoryIds = FISH_IDS;    break;
-						case "Mining":      categoryIds = ORE_IDS;     break;
-						case "Farming":     categoryIds = FARMING_IDS; break;
-						case "Hunter":      categoryIds = HUNTER_IDS;  break;
+						case "Woodcutting": categoryIds = LOG_IDS;      break;
+						case "Fishing":     categoryIds = FISH_IDS;     break;
+						case "Mining":      categoryIds = ORE_IDS;      break;
+						case "Farming":     categoryIds = FARMING_IDS;  break;
+						case "Hunter":      categoryIds = HUNTER_IDS;   break;
+						case "Trawling":    categoryIds = TRAWLING_IDS; break;
 						default:            categoryIds = ImmutableSet.of();
 					}
 					lastInventory.keySet().removeIf(categoryIds::contains);
